@@ -29,6 +29,18 @@ class Ghost {
         this.reset(startX, startY);
     }
 
+    reset(startX, startY) {
+        this.x = startX * this.tileSize + this.tileSize / 2;
+        this.y = startY * this.tileSize + this.tileSize / 2;
+        this.direction = 1;  // 上向きで開始
+        this.isVulnerable = false;
+        this.isEaten = false;
+        this.isBlinking = false;
+        this.scatterMode = true;
+        this.scatterTimer = 0;
+        this.isActive = false;
+    }
+
     start() {
         this.isActive = true;
         this.scatterTimer = 0;
@@ -273,7 +285,7 @@ class Ghost {
                 }
                 // 現在の方向が使えない場合は新しい方向を決定
                 else if (!availableDirections.includes(this.direction)) {
-                    const nextDir = this.decideNextDirection(pacmanX, pacmanY, pacmanDirection);
+                    const nextDir = this.decideNextDirection(pacmanX, pacmanY);
                     this.direction = availableDirections.includes(nextDir) ? nextDir : availableDirections[0];
                 }
             }
@@ -364,135 +376,81 @@ class Ghost {
         return count;
     }
 
-    getCornerTarget() {
-        return { x: 0, y: 0 };
-    }
+    makeVulnerable() {
+        this.isVulnerable = true;
+        this.isBlinking = false;
+        this.speed = this.baseSpeed * 0.5;  // 弱体化時は速度が半分に
 
-    decideNextDirection(pacmanX, pacmanY) {
-        const availableDirections = this.getAvailableDirections();
-        if (availableDirections.length === 0) return this.direction;
+        // 弱体化状態の時間管理
+        clearTimeout(this.vulnerableTimeout);
+        clearTimeout(this.blinkingTimeout);
 
-        let targetX, targetY;
-        if (this.scatterMode) {
-            const corner = this.getCornerTarget();
-            targetX = corner.x;
-            targetY = corner.y;
-        } else {
-            targetX = pacmanX;
-            targetY = pacmanY;
-        }
+        // 8秒後に点滅開始
+        this.blinkingTimeout = setTimeout(() => {
+            this.isBlinking = true;
+        }, 8000);
 
-        return this.findBestDirection(availableDirections, targetX, targetY);
+        // 10秒後に通常状態に戻る
+        this.vulnerableTimeout = setTimeout(() => {
+            this.isVulnerable = false;
+            this.isBlinking = false;
+            this.speed = this.baseSpeed;
+        }, 10000);
     }
 
     findBestDirection(availableDirections, targetX, targetY) {
-        // ターゲットまでの方向を決定
-        const dx = targetX - this.x;
-        const dy = targetY - this.y;
+        let bestDirection = availableDirections[0];
+        let shortestDistance = Infinity;
 
-        // 優先順位を計算(ターゲットに近づく方向を優先)
-        const directions = [...availableDirections].sort((a, b) => {
-            const moveA = this.getMoveForDirection(a, dx, dy);
-            const moveB = this.getMoveForDirection(b, dx, dy);
-            return moveB.priority - moveA.priority;
-        });
+        for (const direction of availableDirections) {
+            // 各方向に1タイル進んだ位置を計算
+            let nextX = this.x;
+            let nextY = this.y;
+            switch (direction) {
+                case 0: nextX += this.tileSize; break; // 右
+                case 1: nextY -= this.tileSize; break; // 上
+                case 2: nextX -= this.tileSize; break; // 左
+                case 3: nextY += this.tileSize; break; // 下
+            }
 
-        // モード切り替え時は必ず方向転換
-        if (this.modeJustChanged) {
-            this.modeJustChanged = false;
-            // 現在の方向の反対を除外
-            const opposite = (this.direction + 2) % 4;
-            return directions.find(d => d !== opposite) || directions[0];
-        }
-
-        return directions[0];
-    }
-
-    getMoveForDirection(direction, dx, dy) {
-        let priority = 0;
-        const inBottomHalf = this.y > this.canvas.height / 2;
-
-        // 上下方向の優先度を調整
-        switch (direction) {
-            case 0: // 右
-                priority = dx > 0 ? 2 : 0;
-                break;
-            case 1: // 上
-                // 下半分にいる場合、上方向の優先度を大幅に上げる
-                priority = dy < 0 ? (inBottomHalf ? 5 : 3) : 0;
-                break;
-            case 2: // 左
-                priority = dx < 0 ? 2 : 0;
-                break;
-            case 3: // 下
-                // 上半分にいる場合のみ下方向を許可
-                priority = (!inBottomHalf && dy > 0) ? 2 : 0;
-                break;
-        }
-
-        // 現在の方向を維持するボーナス
-        if (direction === this.direction) {
-            priority += 1;
-        }
-
-        // 交差点での優先度調整
-        if (this.isAtCrossroad()) {
-            // 上下方向の移動をより優先
-            if (direction === 1 || direction === 3) {
-                priority += 2;
+            // 目標地点までの距離を計算
+            const distance = Math.hypot(nextX - targetX, nextY - targetY);
+            if (distance < shortestDistance) {
+                shortestDistance = distance;
+                bestDirection = direction;
             }
         }
 
-        return { direction, priority };
+        return bestDirection;
     }
 
-    makeVulnerable() {
-        this.isVulnerable = true;
-        this.speed = 1;
-        this.blinkStart = 0;
-        this.isBlinking = false;
-        
-        clearTimeout(this.vulnerableTimeout);
-        clearInterval(this.blinkInterval);
-        
-        // 7秒後に点滅開始
-        this.vulnerableTimeout = setTimeout(() => {
-            this.blinkStart = Date.now();
-            this.blinkInterval = setInterval(() => {
-                this.isBlinking = !this.isBlinking;
-            }, 200);
-            
-            // 3秒間点滅した後、通常状態に戻る
-            setTimeout(() => {
-                this.isVulnerable = false;
-                this.speed = 1.5;
-                clearInterval(this.blinkInterval);
-                this.isBlinking = false;
-            }, 3000);
-        }, 7000);
+    getCornerTarget() {
+        return { x: 0, y: this.canvas.height };
     }
 
-    reset(startX, startY) {
-        // 位置をタイルの中心に設定
-        this.x = startX * this.tileSize + this.tileSize / 2;
-        this.y = startY * this.tileSize + this.tileSize / 2;
-        
-        // 基本状態のリセット
-        this.direction = 1;  // 上向きで開始
-        this.lastDirection = -1;
-        this.isVulnerable = false;
-        this.isEaten = false;
-        this.speed = this.baseSpeed || 1.5;
-        this.scatterMode = true;
-        this.scatterTimer = 0;
-        this.isActive = true;  // アクティブ状態で開始
-        this.modeJustChanged = false;
-        
-        // 点滅状態をリセット
-        clearTimeout(this.vulnerableTimeout);
-        clearInterval(this.blinkInterval);
-        this.isBlinking = false;
-        this.blinkStart = 0;
+    decideNextDirection(pacmanX, pacmanY) {
+        if (this.isVulnerable) {
+            return super.decideNextDirection(pacmanX, pacmanY);
+        }
+
+        const availableDirections = this.getAvailableDirections();
+
+        // スキャターモード中は左下のコーナーを目指す
+        if (this.scatterMode) {
+            const corner = this.getCornerTarget();
+            return this.findBestDirection(availableDirections, corner.x, corner.y);
+        }
+
+        // パックマンとの距離を計算
+        const distance = Math.hypot(this.x - pacmanX, this.y - pacmanY);
+        if (distance > this.distanceThreshold) {
+            // パックマンが遠い場合は直接追いかける
+            return this.findBestDirection(availableDirections, pacmanX, pacmanY);
+        } else {
+            // 近い場合は散開する
+            const corner = this.getCornerTarget();
+            return this.findBestDirection(availableDirections, corner.x, corner.y);
+        }
     }
 }
 
@@ -725,4 +683,15 @@ class Clyde extends Ghost {
             return this.findBestDirection(availableDirections, corner.x, corner.y);
         }
 
-        // パックマンとの距離を
+        // パックマンとの距離を計算
+        const distance = Math.hypot(this.x - pacmanX, this.y - pacmanY);
+        if (distance > this.distanceThreshold) {
+            // パックマンが遠い場合は直接追いかける
+            return this.findBestDirection(availableDirections, pacmanX, pacmanY);
+        } else {
+            // 近い場合は散開する
+            const corner = this.getCornerTarget();
+            return this.findBestDirection(availableDirections, corner.x, corner.y);
+        }
+    }
+}
