@@ -173,8 +173,11 @@ class Ghost {
         const offsetX = Math.abs(this.x - (tileX * this.tileSize + this.tileSize / 2));
         const offsetY = Math.abs(this.y - (tileY * this.tileSize + this.tileSize / 2));
 
+        // タイル中心からの許容オフセット値を設定（速度の2倍まで許容）
+        const tolerance = this.speed * 2;
+        
         // タイル中心から離れている場合は現在の方向を維持
-        if (offsetX > this.speed || offsetY > this.speed) {
+        if (offsetX > tolerance || offsetY > tolerance) {
             return this.canMove(tileX, tileY, this.direction) ? [this.direction] : [];
         }
 
@@ -268,8 +271,11 @@ class Ghost {
         const offsetX = this.x - (tileX * this.tileSize + this.tileSize / 2);
         const offsetY = this.y - (tileY * this.tileSize + this.tileSize / 2);
 
+        // タイル中心からの許容オフセット値を設定（速度の2倍まで許容）
+        const tolerance = this.speed * 2;
+        
         // タイル中心に近い場合は方向を決定
-        if (Math.abs(offsetX) <= this.speed && Math.abs(offsetY) <= this.speed) {
+        if (Math.abs(offsetX) <= tolerance && Math.abs(offsetY) <= tolerance) {
             // 位置を正確にタイル中心に補正
             this.x = tileX * this.tileSize + this.tileSize / 2;
             this.y = tileY * this.tileSize + this.tileSize / 2;
