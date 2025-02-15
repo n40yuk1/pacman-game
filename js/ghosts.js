@@ -4,49 +4,113 @@ class Ghost {
         this.ctx = canvas.getContext('2d');
         this.maze = maze;
         this.tileSize = maze.tileSize;
-        this.startX = startX;
-        this.startY = startY;
-        
-        // 基本設定
-        this.color = color;
-        this.direction = 1;  // 0:右, 1:上, 2:左, 3:下
-        this.speed = 1.5;  // 初期速度を1.5に変更
-        
-        // 状態管理
-        this.isVulnerable = false;
-        this.isEaten = false;
-        this.isBlinking = false;
-        this.scatterMode = true;
-        this.scatterTimer = 0;
-        this.scatterDuration = 7000;
-        this.chaseDuration = 20000;
-        this.isActive = false;  // ゴーストがアクティブかどうか
-        
-        // 移動優先順位(上、左、下、右)
-        this.priorityOrder = [1, 2, 3, 0];
-
-        // 初期位置に配置
-        this.reset(startX, startY);
-    }
-
-    reset(startX, startY) {
         this.x = startX * this.tileSize + this.tileSize / 2;
         this.y = startY * this.tileSize + this.tileSize / 2;
-        this.direction = 1;  // 上向きで開始
+        this.startX = startX;
+        this.startY = startY;
+        this.color = color;
+        this.direction = 1;
+        this.speed = 2;
         this.isVulnerable = false;
-        this.isEaten = false;
-        this.isBlinking = false;
-        this.scatterMode = true;
-        this.scatterTimer = 0;
         this.isActive = false;
+        this.isBlinking = false;
+        this.isEaten = false;
+        this.targetX = this.x;
+        this.targetY = this.y;
     }
 
     start() {
         this.isActive = true;
-        this.scatterTimer = 0;
-        this.scatterMode = true;
-        this.direction = 1;  // 上向きで開始
-        this.speed = this.baseSpeed || 1.5;  // 速度を初期化
+    }
+
+    reset() {
+        this.x = this.startX * this.tileSize + this.tileSize / 2;
+        this.y = this.startY * this.tileSize + this.tileSize / 2;
+        this.targetX = this.x;
+        this.targetY = this.y;
+        this.direction = 1;
+        this.isVulnerable = false;
+        this.isActive = false;
+        this.isBlinking = false;
+        this.isEaten = false;
+    }
+
+    canMove(tileX, tileY) {
+        if (tileY === 14) {
+            if (tileX < 0 || tileX >= this.maze.layout[0].length) {
+                return true;
+            }
+        }
+
+        if (tileY < 0 || tileY >= this.maze.layout.length || 
+            tileX < 0 || tileX >= this.maze.layout[0].length) {
+            return false;
+        }
+
+        return this.maze.layout[tileY][tileX] !== 1;
+    }
+
+    update(pacmanX, pacmanY) {
+        if (!this.isActive) return;
+
+        // トンネル処理
+        if (this.x < -this.tileSize) {
+            this.x = this.canvas.width + this.tileSize / 2;
+            this.targetX = this.x;
+        } else if (this.x > this.canvas.width) {
+            this.x = -this.tileSize / 2;
+            this.targetX = this.x;
+        }
+
+        // 現在のタイル位置
+        const currentTileX = Math.floor(this.x / this.tileSize);
+        const currentTileY = Math.floor(this.y / this.tileSize);
+
+        // 目標位置に到達したかチェック
+        if (Math.abs(this.x - this.targetX) < this.speed && Math.abs(this.y - this.targetY) < this.speed) {
+            this.x = this.targetX;
+            this.y = this.targetY;
+
+            // 可能な方向をチェック
+            const possibleDirs = [];
+            for (let i = 0; i < 4; i++) {
+                if ((i + 2) % 4 !== this.direction) { // 180度回転を防ぐ
+                    let nextX = currentTileX;
+                    let nextY = currentTileY;
+                    switch (i) {
+                        case 0: nextX++; break;
+                        case 1: nextY--; break;
+                        case 2: nextX--; break;
+                        case 3: nextY++; break;
+                    }
+                    if (this.canMove(nextX, nextY)) {
+                        possibleDirs.push(i);
+                    }
+                }
+            }
+
+            // ランダムに新しい方向を選択
+            if (possibleDirs.length > 0) {
+                this.direction = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
+                // 次の目標位置を設定
+                switch (this.direction) {
+                    case 0: this.targetX = (currentTileX + 1) * this.tileSize + this.tileSize / 2; break;
+                    case 1: this.targetY = (currentTileY - 1) * this.tileSize + this.tileSize / 2; break;
+                    case 2: this.targetX = (currentTileX - 1) * this.tileSize + this.tileSize / 2; break;
+                    case 3: this.targetY = (currentTileY + 1) * this.tileSize + this.tileSize / 2; break;
+                }
+            }
+        } else {
+            // 目標位置に向かって移動
+            const dx = this.targetX - this.x;
+            const dy = this.targetY - this.y;
+            if (Math.abs(dx) > 0) {
+                this.x += Math.sign(dx) * this.speed;
+            }
+            if (Math.abs(dy) > 0) {
+                this.y += Math.sign(dy) * this.speed;
+            }
+        }
     }
 
     draw() {
@@ -58,8 +122,9 @@ class Ghost {
         } else if (this.isEaten) {
             ghostColor = '#000';
         }
-        
+
         // 本体の描画
+        this.ctx.fillStyle = ghostColor;
         this.ctx.beginPath();
         this.ctx.arc(
             Math.round(this.x),
@@ -80,624 +145,76 @@ class Ghost {
         }
         this.ctx.lineTo(Math.round(this.x) - this.tileSize / 2, Math.round(this.y) + this.tileSize / 2);
         this.ctx.closePath();
-        
-        this.ctx.fillStyle = ghostColor;
         this.ctx.fill();
 
         if (!this.isEaten) {
-            this.drawEyes();
+            // 目を描画
+            this.ctx.fillStyle = '#fff';
+            this.ctx.beginPath();
+            this.ctx.arc(this.x - this.tileSize / 4, this.y - this.tileSize / 8, 3, 0, Math.PI * 2);
+            this.ctx.arc(this.x + this.tileSize / 4, this.y - this.tileSize / 8, 3, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // 瞳を描画
+            this.ctx.fillStyle = '#000';
+            const pupilOffset = {
+                x: [2, 0, -2, 0][this.direction],
+                y: [0, -2, 0, 2][this.direction]
+            };
+            this.ctx.beginPath();
+            this.ctx.arc(
+                this.x - this.tileSize / 4 + pupilOffset.x,
+                this.y - this.tileSize / 8 + pupilOffset.y,
+                1.5,
+                0,
+                Math.PI * 2
+            );
+            this.ctx.arc(
+                this.x + this.tileSize / 4 + pupilOffset.x,
+                this.y - this.tileSize / 8 + pupilOffset.y,
+                1.5,
+                0,
+                Math.PI * 2
+            );
+            this.ctx.fill();
         }
         
         this.ctx.restore();
     }
 
-    drawEyes() {
-        const eyeX1 = Math.round(this.x) - this.tileSize / 6;
-        const eyeX2 = Math.round(this.x) + this.tileSize / 6;
-        const eyeY = Math.round(this.y);
-
-        this.ctx.fillStyle = '#fff';
-        this.ctx.beginPath();
-        this.ctx.arc(eyeX1, eyeY, 3, 0, Math.PI * 2);
-        this.ctx.arc(eyeX2, eyeY, 3, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        const pupilOffset = this.getPupilOffset();
-        this.ctx.fillStyle = '#000';
-        this.ctx.beginPath();
-        this.ctx.arc(
-            eyeX1 + pupilOffset.x,
-            eyeY + pupilOffset.y,
-            1.5,
-            0,
-            Math.PI * 2
-        );
-        this.ctx.arc(
-            eyeX2 + pupilOffset.x,
-            eyeY + pupilOffset.y,
-            1.5,
-            0,
-            Math.PI * 2
-        );
-        this.ctx.fill();
-    }
-
-    getPupilOffset() {
-        switch (this.direction) {
-            case 0: return { x: 1, y: 0 };
-            case 1: return { x: 0, y: -1 };
-            case 2: return { x: -1, y: 0 };
-            case 3: return { x: 0, y: 1 };
-            default: return { x: 0, y: 0 };
-        }
-    }
-
-    canMove(tileX, tileY, direction) {
-        // トンネルの特別処理
-        if (tileY === 14 && (tileX < 0 || tileX >= this.maze.layout[0].length)) {
-            return true;
-        }
-
-        // 次のタイル位置を計算
-        let nextTileX = tileX;
-        let nextTileY = tileY;
-
-        switch (direction) {
-            case 0: nextTileX += 1; break; // 右
-            case 1: nextTileY -= 1; break; // 上
-            case 2: nextTileX -= 1; break; // 左
-            case 3: nextTileY += 1; break; // 下
-        }
-
-        // 迷路の範囲外チェック(トンネル以外)
-        if (nextTileY < 0 || nextTileY >= this.maze.layout.length ||
-            nextTileX < 0 || nextTileX >= this.maze.layout[0].length) {
-            return false;
-        }
-
-        // 移動先のタイルが壁かどうかをチェック
-        return this.maze.layout[nextTileY][nextTileX] !== 1;
-    }
-
-    getAvailableDirections() {
-        // 上、左、下、右の優先順位
-        const directionPriority = [1, 2, 3, 0];
-        const oppositeDir = (this.direction + 2) % 4;
-        const result = [];
-
-        // タイル座標を取得
-        const tileX = Math.floor(this.x / this.tileSize);
-        const tileY = Math.floor(this.y / this.tileSize);
-
-        // タイル中心からの距離を計算
-        const offsetX = Math.abs(this.x - (tileX * this.tileSize + this.tileSize / 2));
-        const offsetY = Math.abs(this.y - (tileY * this.tileSize + this.tileSize / 2));
-
-        // タイル中心からの許容オフセット値を設定（速度の2倍まで許容）
-        const tolerance = this.speed * 2;
-        
-        // タイル中心から離れている場合は現在の方向を維持
-        if (offsetX > tolerance || offsetY > tolerance) {
-            return this.canMove(tileX, tileY, this.direction) ? [this.direction] : [];
-        }
-
-        let availableCount = 0;
-        // まず利用可能な方向の数を数える
-        for (const dir of directionPriority) {
-            if (this.canMove(tileX, tileY, dir)) {
-                availableCount++;
-            }
-        }
-
-        // 各方向をチェック
-        for (const dir of directionPriority) {
-            // 後ろ向きは、行き止まりか交差点(3方向以上移動可能)の場合のみ許可
-            if (dir === oppositeDir && availableCount !== 1 && availableCount < 3) {
-                continue;
-            }
-
-            if (this.canMove(tileX, tileY, dir)) {
-                result.push(dir);
-            }
-        }
-
-        return result;
-    }
-
-    isDeadEnd(tileX, tileY) {
-        let availableMoves = 0;
-        const directions = [0, 1, 2, 3];
-        for (const dir of directions) {
-            if (this.canMove(tileX, tileY, dir)) {
-                availableMoves++;
-            }
-        }
-        return availableMoves === 1;
-    }
-
-    isAtCrossroad() {
-        // 現在のタイル位置を取得
-        const currentTileX = Math.floor(this.x / this.tileSize);
-        const currentTileY = Math.floor(this.y / this.tileSize);
-        
-        // タイルの中心にいるかチェック
-        const isCentered =
-            Math.abs((this.x % this.tileSize) - this.tileSize / 2) < 1 &&
-            Math.abs((this.y % this.tileSize) - this.tileSize / 2) < 1;
-            
-        if (!isCentered) {
-            return false;
-        }
-
-        // 利用可能な方向の数をカウント
-        let availableCount = 0;
-        for (let i = 0; i < 4; i++) {
-            if (this.canMove(currentTileX * this.tileSize, currentTileY * this.tileSize, i)) {
-                availableCount++;
-            }
-        }
-
-        // 2つ以上の方向に進める場合は交差点と判定
-        return availableCount >= 2;
-    }
-
-    isDeadEnd() {
-        let availableCount = 0;
-        for (let i = 0; i < 4; i++) {
-            if (this.canMove(this.x, this.y, i)) {
-                availableCount++;
-            }
-        }
-        return availableCount === 1;
-    }
-
-    update(pacmanX, pacmanY, pacmanDirection) {
-        if (!this.isActive) return;  // アクティブでない場合は更新しない
-
-        this.updateMode();
-
-        // トンネル処理
-        if (this.x < -this.tileSize) {
-            this.x = this.canvas.width;
-        } else if (this.x > this.canvas.width) {
-            this.x = -this.tileSize;
-        }
-
-        // 現在のタイル位置を取得
-        const tileX = Math.floor(this.x / this.tileSize);
-        const tileY = Math.floor(this.y / this.tileSize);
-
-        // タイル中心からのオフセットを計算
-        const offsetX = this.x - (tileX * this.tileSize + this.tileSize / 2);
-        const offsetY = this.y - (tileY * this.tileSize + this.tileSize / 2);
-
-        // タイル中心からの許容オフセット値を設定（速度の2倍まで許容）
-        const tolerance = this.speed * 2;
-        
-        // タイル中心に近い場合は方向を決定
-        if (Math.abs(offsetX) <= tolerance && Math.abs(offsetY) <= tolerance) {
-            // 位置を正確にタイル中心に補正
-            this.x = tileX * this.tileSize + this.tileSize / 2;
-            this.y = tileY * this.tileSize + this.tileSize / 2;
-
-            // 利用可能な方向を取得
-            const availableDirections = this.getAvailableDirections();
-
-            if (availableDirections.length > 0) {
-                // モード変更直後は必ず方向転換
-                if (this.modeJustChanged) {
-                    this.direction = availableDirections[0];
-                    this.modeJustChanged = false;
-                }
-                // 現在の方向が使えない場合は新しい方向を決定
-                else if (!availableDirections.includes(this.direction)) {
-                    const nextDir = this.decideNextDirection(pacmanX, pacmanY);
-                    this.direction = availableDirections.includes(nextDir) ? nextDir : availableDirections[0];
-                }
-            }
-        }
-
-        // 移動処理
-        const moveSpeed = this.speed;
-        let nextX = this.x;
-        let nextY = this.y;
-
-        // 次の位置を計算
-        switch (this.direction) {
-            case 0: nextX += moveSpeed; break;
-            case 1: nextY -= moveSpeed; break;
-            case 2: nextX -= moveSpeed; break;
-            case 3: nextY += moveSpeed; break;
-        }
-
-        // 次の位置のタイル座標を計算
-        const nextTileX = Math.floor(nextX / this.tileSize);
-        const nextTileY = Math.floor(nextY / this.tileSize);
-
-        // 移動可能な場合のみ位置を更新
-        if (this.canMove(nextTileX, nextTileY, this.direction)) {
-            this.x = nextX;
-            this.y = nextY;
-        } else {
-            // 移動できない場合は、新しい方向を即座に探す
-            const availableDirections = this.getAvailableDirections();
-            if (availableDirections.length > 0) {
-                this.direction = availableDirections[0];
-            }
-        }
-    }
-
-    updateMode() {
-        this.scatterTimer += 16;
-        const wasScatterMode = this.scatterMode;
-        
-        // ゲーム開始からの経過時間(ミリ秒)
-        const totalTime = this.scatterTimer;
-        
-        // オリジナルのパックマンに近いモード切替パターン
-        const patterns = [
-            { end: 7000, mode: true },    // 7秒: スキャター
-            { end: 27000, mode: false },  // 20秒: チェイス
-            { end: 34000, mode: true },   // 7秒: スキャター
-            { end: 54000, mode: false },  // 20秒: チェイス
-            { end: 59000, mode: true },   // 5秒: スキャター
-            { end: 79000, mode: false },  // 20秒: チェイス
-            { end: 84000, mode: true },   // 5秒: スキャター
-        ];
-        
-        // 現在のモードを決定
-        let newScatterMode = false;
-        for (const pattern of patterns) {
-            if (totalTime < pattern.end) {
-                newScatterMode = pattern.mode;
-                break;
-            }
-        }
-        
-        // モードが変更された場合
-        if (wasScatterMode !== newScatterMode) {
-            this.scatterMode = newScatterMode;
-            this.modeJustChanged = true;
-            
-            // 方向転換を強制
-            this.direction = (this.direction + 2) % 4;
-            
-            // 位置を調整して壁にめり込まないようにする
-            const currentTileX = Math.floor(this.x / this.tileSize);
-            const currentTileY = Math.floor(this.y / this.tileSize);
-            this.x = currentTileX * this.tileSize + this.tileSize / 2;
-            this.y = currentTileY * this.tileSize + this.tileSize / 2;
-        }
-    }
-
-    countRemainingDots() {
-        let count = 0;
-        for (let row = 0; row < this.maze.layout.length; row++) {
-            for (let col = 0; col < this.maze.layout[row].length; col++) {
-                if (this.maze.layout[row][col] === 0) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
     makeVulnerable() {
         this.isVulnerable = true;
         this.isBlinking = false;
-        this.speed = this.baseSpeed * 0.5;  // 弱体化時は速度が半分に
-
-        // 弱体化状態の時間管理
-        clearTimeout(this.vulnerableTimeout);
-        clearTimeout(this.blinkingTimeout);
-
-        // 8秒後に点滅開始
-        this.blinkingTimeout = setTimeout(() => {
+        setTimeout(() => {
             this.isBlinking = true;
-        }, 8000);
-
-        // 10秒後に通常状態に戻る
-        this.vulnerableTimeout = setTimeout(() => {
+        }, 7000);
+        setTimeout(() => {
             this.isVulnerable = false;
             this.isBlinking = false;
-            this.speed = this.baseSpeed;
         }, 10000);
-    }
-
-    findBestDirection(availableDirections, targetX, targetY) {
-        let bestDirection = availableDirections[0];
-        let shortestDistance = Infinity;
-
-        for (const direction of availableDirections) {
-            // 各方向に1タイル進んだ位置を計算
-            let nextX = this.x;
-            let nextY = this.y;
-            switch (direction) {
-                case 0: nextX += this.tileSize; break; // 右
-                case 1: nextY -= this.tileSize; break; // 上
-                case 2: nextX -= this.tileSize; break; // 左
-                case 3: nextY += this.tileSize; break; // 下
-            }
-
-            // 目標地点までの距離を計算
-            const distance = Math.hypot(nextX - targetX, nextY - targetY);
-            if (distance < shortestDistance) {
-                shortestDistance = distance;
-                bestDirection = direction;
-            }
-        }
-
-        return bestDirection;
-    }
-
-    getCornerTarget() {
-        return { x: 0, y: this.canvas.height };
-    }
-
-    decideNextDirection(pacmanX, pacmanY) {
-        if (this.isVulnerable) {
-            return super.decideNextDirection(pacmanX, pacmanY);
-        }
-
-        const availableDirections = this.getAvailableDirections();
-
-        // スキャターモード中は左下のコーナーを目指す
-        if (this.scatterMode) {
-            const corner = this.getCornerTarget();
-            return this.findBestDirection(availableDirections, corner.x, corner.y);
-        }
-
-        // パックマンとの距離を計算
-        const distance = Math.hypot(this.x - pacmanX, this.y - pacmanY);
-        if (distance > this.distanceThreshold) {
-            // パックマンが遠い場合は直接追いかける
-            return this.findBestDirection(availableDirections, pacmanX, pacmanY);
-        } else {
-            // 近い場合は散開する
-            const corner = this.getCornerTarget();
-            return this.findBestDirection(availableDirections, corner.x, corner.y);
-        }
     }
 }
 
 class Blinky extends Ghost {
     constructor(canvas, maze) {
         super(canvas, maze, 13, 11, '#ff0000');
-        this.baseSpeed = 2;
-        this.speed = this.baseSpeed;
-        this.elroy = false;  // イライラモード(ドットが少なくなると加速)
-        this.elroyThreshold = 20;  // イライラモードに入るドット残り数
-    }
-
-    getCornerTarget() {
-        return { x: this.maze.tileSize * 25, y: 0 };
-    }
-
-    decideNextDirection(pacmanX, pacmanY) {
-        if (this.isVulnerable) {
-            return super.decideNextDirection(pacmanX, pacmanY);
-        }
-
-        const availableDirections = this.getAvailableDirections();
-        
-        // ドット数が少なくなったらイライラモードに
-        const remainingDots = this.countRemainingDots();
-        this.elroy = remainingDots <= this.elroyThreshold;
-        
-        // イライラモード中は加速
-        if (this.elroy && !this.isVulnerable) {
-            this.speed = this.baseSpeed * 1.25;
-        } else {
-            // 通常時はパックマンとの距離に応じて速度調整
-            const distance = Math.hypot(this.x - pacmanX, this.y - pacmanY);
-            this.speed = this.baseSpeed + Math.min(distance / (this.tileSize * 15), 0.3);
-        }
-
-        // イライラモード中は常にパックマンを追いかける
-        if (this.elroy) {
-            return this.findBestDirection(availableDirections, pacmanX, pacmanY);
-        }
-
-        // スキャターモード中は右上のコーナーを目指す
-        if (this.scatterMode) {
-            const corner = this.getCornerTarget();
-            return this.findBestDirection(availableDirections, corner.x, corner.y);
-        }
-
-        // 通常時はパックマンを直接追いかける
-        return this.findBestDirection(availableDirections, pacmanX, pacmanY);
     }
 }
 
 class Pinky extends Ghost {
     constructor(canvas, maze) {
         super(canvas, maze, 14, 11, '#ffb8ff');
-        this.baseSpeed = 1.8;
-        this.speed = this.baseSpeed;
-        this.ambushDistance = 4;
-    }
-
-    getCornerTarget() {
-        return { x: 0, y: 0 };
-    }
-
-    decideNextDirection(pacmanX, pacmanY, pacmanDirection) {
-        if (this.isVulnerable) {
-            return super.decideNextDirection(pacmanX, pacmanY);
-        }
-
-        const availableDirections = this.getAvailableDirections();
-
-        // スキャターモード中は左上のコーナーを目指す
-        if (this.scatterMode) {
-            const corner = this.getCornerTarget();
-            return this.findBestDirection(availableDirections, corner.x, corner.y);
-        }
-
-        // パックマンの4タイル先を目標とする(オリジナルの仕様)
-        let targetX = pacmanX;
-        let targetY = pacmanY;
-
-        // パックマンの向いている方向に応じて目標位置を設定
-        const tileOffset = 4;  // 4タイル先を目標
-        switch (pacmanDirection) {
-            case 0: // 右
-                targetX += this.tileSize * tileOffset;
-                break;
-            case 1: // 上
-                targetX -= this.tileSize * tileOffset;  // 上向き時のバグを再現
-                targetY -= this.tileSize * tileOffset;
-                break;
-            case 2: // 左
-                targetX -= this.tileSize * tileOffset;
-                break;
-            case 3: // 下
-                targetY += this.tileSize * tileOffset;
-                break;
-        }
-
-        // 目標位置が壁の場合、最も近い通路に調整
-        const targetTileX = Math.floor(targetX / this.tileSize);
-        const targetTileY = Math.floor(targetY / this.tileSize);
-        if (this.maze.isWall(targetX, targetY)) {
-            // 最も近い通路を探す
-            for (let radius = 1; radius < 5; radius++) {
-                for (let dx = -radius; dx <= radius; dx++) {
-                    for (let dy = -radius; dy <= radius; dy++) {
-                        const checkX = (targetTileX + dx) * this.tileSize;
-                        const checkY = (targetTileY + dy) * this.tileSize;
-                        if (!this.maze.isWall(checkX, checkY)) {
-                            targetX = checkX;
-                            targetY = checkY;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        return this.findBestDirection(availableDirections, targetX, targetY);
     }
 }
 
 class Inky extends Ghost {
     constructor(canvas, maze) {
         super(canvas, maze, 15, 11, '#00ffff');
-        this.baseSpeed = 1.8;
-        this.speed = this.baseSpeed;
-    }
-
-    adjustTargetPosition(x, y) {
-        // 迷路の範囲内に収める
-        const maxX = (this.maze.layout[0].length - 1) * this.tileSize;
-        const maxY = (this.maze.layout.length - 1) * this.tileSize;
-        
-        const adjustedX = Math.max(0, Math.min(x, maxX));
-        const adjustedY = Math.max(0, Math.min(y, maxY));
-        
-        // 目標位置が壁の場合、最も近い通路を探す
-        const tileX = Math.floor(adjustedX / this.tileSize);
-        const tileY = Math.floor(adjustedY / this.tileSize);
-        
-        if (this.maze.isWall(adjustedX, adjustedY)) {
-            for (let radius = 1; radius < 5; radius++) {
-                for (let dx = -radius; dx <= radius; dx++) {
-                    for (let dy = -radius; dy <= radius; dy++) {
-                        const checkX = (tileX + dx) * this.tileSize;
-                        const checkY = (tileY + dy) * this.tileSize;
-                        if (!this.maze.isWall(checkX, checkY)) {
-                            return { x: checkX, y: checkY };
-                        }
-                    }
-                }
-            }
-        }
-        
-        return { x: adjustedX, y: adjustedY };
-    }
-
-    getCornerTarget() {
-        return { x: this.maze.tileSize * 25, y: this.canvas.height };
-    }
-
-    decideNextDirection(pacmanX, pacmanY, pacmanDirection, blinkyX, blinkyY) {
-        if (this.isVulnerable) {
-            return super.decideNextDirection(pacmanX, pacmanY);
-        }
-
-        const availableDirections = this.getAvailableDirections();
-
-        // スキャターモード中は右下のコーナーを目指す
-        if (this.scatterMode) {
-            const corner = this.getCornerTarget();
-            return this.findBestDirection(availableDirections, corner.x, corner.y);
-        }
-
-        // パックマンの2タイル先の位置を計算
-        let intermediateX = pacmanX;
-        let intermediateY = pacmanY;
-
-        switch (pacmanDirection) {
-            case 0: // 右
-                intermediateX += this.tileSize * 2;
-                break;
-            case 1: // 上
-                intermediateX -= this.tileSize * 2;  // 上向き時のバグを再現
-                intermediateY -= this.tileSize * 2;
-                break;
-            case 2: // 左
-                intermediateX -= this.tileSize * 2;
-                break;
-            case 3: // 下
-                intermediateY += this.tileSize * 2;
-                break;
-        }
-
-        // Blinkyの位置を基準に目標位置を計算
-        const targetX = intermediateX + (intermediateX - blinkyX);
-        const targetY = intermediateY + (intermediateY - blinkyY);
-
-        // 目標位置が迷路の範囲外の場合、最も近い有効な位置に調整
-        const adjustedTarget = this.adjustTargetPosition(targetX, targetY);
-
-        return this.findBestDirection(availableDirections, adjustedTarget.x, adjustedTarget.y);
     }
 }
 
 class Clyde extends Ghost {
     constructor(canvas, maze) {
         super(canvas, maze, 16, 11, '#ffb851');
-        this.baseSpeed = 1.7;  // 最も遅い
-        this.speed = this.baseSpeed;
-        this.distanceThreshold = 8 * this.tileSize;  // 8タイルの距離閾値
-    }
-
-    getCornerTarget() {
-        return { x: 0, y: this.canvas.height };
-    }
-
-    decideNextDirection(pacmanX, pacmanY) {
-        if (this.isVulnerable) {
-            return super.decideNextDirection(pacmanX, pacmanY);
-        }
-
-        const availableDirections = this.getAvailableDirections();
-
-        // スキャターモード中は左下のコーナーを目指す
-        if (this.scatterMode) {
-            const corner = this.getCornerTarget();
-            return this.findBestDirection(availableDirections, corner.x, corner.y);
-        }
-
-        // パックマンとの距離を計算
-        const distance = Math.hypot(this.x - pacmanX, this.y - pacmanY);
-        if (distance > this.distanceThreshold) {
-            // パックマンが遠い場合は直接追いかける
-            return this.findBestDirection(availableDirections, pacmanX, pacmanY);
-        } else {
-            // 近い場合は散開する
-            const corner = this.getCornerTarget();
-            return this.findBestDirection(availableDirections, corner.x, corner.y);
-        }
     }
 }
