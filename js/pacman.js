@@ -10,7 +10,7 @@ class Pacman {
         this.y = 23 * this.tileSize;
         this.direction = 0; // 0: 右, 1: 上, 2: 左, 3: 下
         this.nextDirection = 0;
-        this.speed = 2;
+        this.speed = 1.33; // ゴーストと同じ速度に調整
         this.mouthOpen = 0.2;
         this.mouthSpeed = 0.05;
         this.opening = true;
@@ -77,26 +77,29 @@ class Pacman {
 
     canMove(x, y, direction) {
         const nextPos = this.getNextPosition(x, y, direction, this.speed);
-        const margin = 4; // 壁との余裕を持たせる
+        const margin = 2; // より柔軟な移動のために余裕を減らす
         
-        // 4つの角をチェック
-        const cornerPoints = [
-            { x: nextPos.x + margin, y: nextPos.y + margin },
-            { x: nextPos.x + this.tileSize - margin, y: nextPos.y + margin },
-            { x: nextPos.x + margin, y: nextPos.y + this.tileSize - margin },
-            { x: nextPos.x + this.tileSize - margin, y: nextPos.y + this.tileSize - margin }
-        ];
-
-        // 中心点もチェック
+        // 中心点をメインにチェック
         const centerPoint = {
             x: nextPos.x + this.tileSize / 2,
             y: nextPos.y + this.tileSize / 2
         };
 
-        // いずれかの点が壁に当たっていたら移動不可
-        return ![...cornerPoints, centerPoint].some(point => 
-            this.maze.isWall(point.x, point.y)
-        );
+        // 中心点が壁なら移動不可
+        if (this.maze.isWall(centerPoint.x, centerPoint.y)) {
+            return false;
+        }
+
+        // 進行方向の前方のみチェック
+        const frontPoint = { ...centerPoint };
+        switch (direction) {
+            case 0: frontPoint.x += this.tileSize / 2 - margin; break; // 右
+            case 1: frontPoint.y -= this.tileSize / 2 - margin; break; // 上
+            case 2: frontPoint.x -= this.tileSize / 2 - margin; break; // 左
+            case 3: frontPoint.y += this.tileSize / 2 - margin; break; // 下
+        }
+
+        return !this.maze.isWall(frontPoint.x, frontPoint.y);
     }
 
     getNextPosition(x, y, direction, speed) {
@@ -139,14 +142,18 @@ class Pacman {
             // タイル境界での位置補正
             if (this.direction === 0 || this.direction === 2) { // 左右移動
                 this.x = nextPos.x;
-                // Y座標を補正
+                // Y座標を緩やかに補正
                 const targetY = Math.round(this.y / this.tileSize) * this.tileSize;
-                this.y += Math.sign(targetY - this.y) * Math.min(this.speed * 0.5, Math.abs(targetY - this.y));
+                if (Math.abs(targetY - this.y) > 1) { // 閾値を設定
+                    this.y += Math.sign(targetY - this.y) * this.speed * 0.25;
+                }
             } else { // 上下移動
                 this.y = nextPos.y;
-                // X座標を補正
+                // X座標を緩やかに補正
                 const targetX = Math.round(this.x / this.tileSize) * this.tileSize;
-                this.x += Math.sign(targetX - this.x) * Math.min(this.speed * 0.5, Math.abs(targetX - this.x));
+                if (Math.abs(targetX - this.x) > 1) { // 閾値を設定
+                    this.x += Math.sign(targetX - this.x) * this.speed * 0.25;
+                }
             }
 
             // パックマンの中心位置のタイル座標を計算

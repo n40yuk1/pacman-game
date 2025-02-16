@@ -4,13 +4,14 @@ class Ghost {
         this.ctx = canvas.getContext('2d');
         this.maze = maze;
         this.tileSize = maze.tileSize;
+        this.respawnTimer = null;
         this.x = startX * this.tileSize + this.tileSize / 2;
         this.y = startY * this.tileSize + this.tileSize / 2;
         this.startX = startX;
         this.startY = startY;
         this.color = color;
         this.direction = 1;
-        this.speed = 2;
+        this.speed = 1.33; // 2 * (2/3) ≈ 1.33
         this.isVulnerable = false;
         this.isActive = false;
         this.isBlinking = false;
@@ -24,25 +25,78 @@ class Ghost {
     }
 
     reset() {
+        const wasEaten = this.isEaten; // リセット前の状態を保存
+
+        // 既存のタイマーをクリア
+        if (this.respawnTimer) {
+            clearTimeout(this.respawnTimer);
+        }
+        if (this.blinkTimer) {
+            clearTimeout(this.blinkTimer);
+        }
+        if (this.vulnerableTimer) {
+            clearTimeout(this.vulnerableTimer);
+        }
+
         this.x = this.startX * this.tileSize + this.tileSize / 2;
         this.y = this.startY * this.tileSize + this.tileSize / 2;
         this.targetX = this.x;
         this.targetY = this.y;
         this.direction = 1;
         this.isVulnerable = false;
-        this.isActive = false;
         this.isBlinking = false;
-        this.isEaten = false;
+
+        if (wasEaten) {
+            // 食べられた後のリセット
+            this.isActive = false;
+            this.isEaten = true; // 状態を維持
+            this.respawnTimer = setTimeout(() => {
+                this.isEaten = false;
+                this.isActive = true;
+            }, 7000);
+        } else {
+            // 通常のリセット（ゲーム開始時など）
+            this.isActive = true;
+            this.isEaten = false;
+        }
+    }
+
+    getEaten() {
+        if (this.isEaten) return; // 既に食べられている場合は無視
+
+        // 既存のタイマーをクリア
+        if (this.respawnTimer) clearTimeout(this.respawnTimer);
+        if (this.blinkTimer) clearTimeout(this.blinkTimer);
+        if (this.vulnerableTimer) clearTimeout(this.vulnerableTimer);
+
+        this.isEaten = true;
+        this.isActive = false;
+        this.isVulnerable = false;
+        this.isBlinking = false;
+
+        // 7秒後に復活
+        this.respawnTimer = setTimeout(() => {
+            this.reset();
+        }, 7000);
     }
 
     canMove(tileX, tileY) {
+        // トンネル領域での特別な処理
         if (tileY === 14) {
-            if (tileX < 0 || tileX >= this.maze.layout[0].length) {
-                return true;
+            // トンネルの左端
+            if (tileX < 0) {
+                return this.direction === 2; // 左方向への移動のみ許可
             }
+            // トンネルの右端
+            if (tileX >= this.maze.layout[0].length) {
+                return this.direction === 0; // 右方向への移動のみ許可
+            }
+            // トンネル内
+            return true;
         }
 
-        if (tileY < 0 || tileY >= this.maze.layout.length || 
+        // 通常の移動可能判定
+        if (tileY < 0 || tileY >= this.maze.layout.length ||
             tileX < 0 || tileX >= this.maze.layout[0].length) {
             return false;
         }
@@ -54,12 +108,16 @@ class Ghost {
         if (!this.isActive) return;
 
         // トンネル処理
-        if (this.x < -this.tileSize) {
-            this.x = this.canvas.width + this.tileSize / 2;
-            this.targetX = this.x;
-        } else if (this.x > this.canvas.width) {
-            this.x = -this.tileSize / 2;
-            this.targetX = this.x;
+        const tunnelY = 14 * this.tileSize + this.tileSize / 2;
+        if (Math.abs(this.y - tunnelY) < this.speed) {
+            // トンネルの高さにいる場合
+            if (this.x < -this.tileSize / 2) {
+                this.x = this.canvas.width + this.tileSize / 2;
+                this.targetX = this.x - this.tileSize;
+            } else if (this.x > this.canvas.width + this.tileSize / 2) {
+                this.x = -this.tileSize / 2;
+                this.targetX = this.x + this.tileSize;
+            }
         }
 
         // 現在のタイル位置
@@ -183,14 +241,27 @@ class Ghost {
     }
 
     makeVulnerable() {
+        if (this.isEaten) return; // 既に食べられている場合は無視
+        
         this.isVulnerable = true;
         this.isBlinking = false;
-        setTimeout(() => {
-            this.isBlinking = true;
+        
+        // 既存のタイマーをクリア
+        if (this.blinkTimer) clearTimeout(this.blinkTimer);
+        if (this.vulnerableTimer) clearTimeout(this.vulnerableTimer);
+        
+        // 新しいタイマーを設定
+        this.blinkTimer = setTimeout(() => {
+            if (!this.isEaten) {
+                this.isBlinking = true;
+            }
         }, 7000);
-        setTimeout(() => {
-            this.isVulnerable = false;
-            this.isBlinking = false;
+        
+        this.vulnerableTimer = setTimeout(() => {
+            if (!this.isEaten) {
+                this.isVulnerable = false;
+                this.isBlinking = false;
+            }
         }, 10000);
     }
 }
